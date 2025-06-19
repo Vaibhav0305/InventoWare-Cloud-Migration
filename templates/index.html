@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Inventory Management System</h1>
+    <form method="POST" action="{{ url_for('logout') }}">
+    {% from 'flask_wtf.html' import csrf_token_field %}
+    {{ csrf_token_field() }}
+    <button type="submit" class="logout-btn">Logout</button>
+</form>
+    <div class="form-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div>
+                    {% for category, message in messages %}
+                        <div class="{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% if user_role == 'admin' %}
+            <h2>Add New Item</h2>
+            <form method="POST" action="{{ url_for('add_item') }}">
+                {% from 'flask_wtf.html' import csrf_token_field %}
+                {{ csrf_token_field() }}
+                <input type="text" name="name" placeholder="Item Name" required>
+                <input type="number" name="quantity" placeholder="Quantity" min="0" required>
+                <input type="number" name="price" placeholder="Price" step="0.01" min="0" required>
+                <button type="submit">Add Item</button>
+            </form>
+        {% endif %}
+
+        {% if user_role == 'worker' %}
+            <h2>Request Item</h2>
+            <form method="POST" action="{{ url_for('add_request') }}">
+                {% from 'flask_wtf.html' import csrf_token_field %}
+                {{ csrf_token_field() }}
+                <input type="text" name="item_name" placeholder="Item Name" required>
+                <input type="number" name="quantity" placeholder="Quantity" min="1" required>
+                <button type="submit">Request Item</button>
+            </form>
+        {% endif %}
+
+        <h2>Inventory</h2>
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                {% if user_role == 'admin' %}
+                    <th>Actions</th>
+                {% endif %}
+            </tr>
+            {% for item_id, item in inventory.items() %}
+                <tr>
+                    <td>{{ item_id }}</td>
+                    <td>{{ item.name | e }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>${{ item.price | round(2) }}</td>
+                    {% if user_role == 'admin' %}
+                        <td>
+                            <form method="POST" action="{{ url_for('delete_item', item_id=item_id) }}">
+                                {% from 'flask_wtf.html' import csrf_token_field %}
+                                {{ csrf_token_field() }}
+                                <button type="submit" class="delete-btn">Delete</button>
+                            </form>
+                        </td>
+                    {% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{% if user_role == 'admin' %}5{% else %}4{% endif %}">No items in inventory</td></tr>
+            {% endfor %}
+        </table>
+
+        <h2>Requests</h2>
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Item Name</th>
+                <th>Quantity</th>
+                <th>Status</th>
+                <th>Requested By</th>
+                {% if user_role == 'admin' %}
+                    <th>Actions</th>
+                {% endif %}
+            </tr>
+            {% for req in requests %}
+                <tr>
+                    <td>{{ req.id }}</td>
+                    <td>{{ req.item_name | e }}</td>
+                    <td>{{ req.quantity }}</td>
+                    <td>{{ req.status | capitalize }}</td>
+                    <td>{{ req.username | e }}</td>
+                    {% if user_role == 'admin' and req.status == 'pending' %}
+                        <td>
+                            <form method="POST" action="{{ url_for('handle_request', request_id=req.id, action='approve') }}">
+                                {% from 'flask_wtf.html' import csrf_token_field %}
+                                {{ csrf_token_field() }}
+                                <input type="number" name="price" placeholder="Enter price" step="0.01" min="0" required>
+                                <button type="submit">Approve</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('handle_request', request_id=req.id, action='reject') }}">
+                                {% from 'flask_wtf.html' import csrf_token_field %}
+                                {{ csrf_token_field() }}
+                                <button type="submit" class="reject-btn">Reject</button>
+                            </form>
+                        </td>
+                    {% elif user_role == 'admin' %}
+                        <td>-</td>
+                    {% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{% if user_role == 'admin' %}6{% else %}5{% endif %}">No requests</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>

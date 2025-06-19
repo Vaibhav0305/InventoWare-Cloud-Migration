@@ -1,0 +1,4 @@
+flask==2.3.3
+flask-wtf==1.2.1
+werkzeug==3.0.4
+psutil==6.0.0

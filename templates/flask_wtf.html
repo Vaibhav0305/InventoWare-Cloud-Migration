@@ -1,0 +1,7 @@
+{% macro render_field(field) %}
+    {{ field(**kwargs)|safe }}
+{% endmacro %}
+
+{% macro csrf_token_field() %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% endmacro %}

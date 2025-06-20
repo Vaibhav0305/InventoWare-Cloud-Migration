@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+env/
+
+# Python cache
+*.log
+
+# Local DB
+*.sqlite3
+*.db
+inventory.db
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Docker
+*.env
+.env.*
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Ignore secrets
+*.pem
+*.key
+
+# OS-generated files
+ehthumbs.db
+Icon?

@@ -1,0 +1,48 @@
+✅ PHASE 1: Setup AWS Access for Terraform
+------------------------------------------
+1. Install AWS CLI
+   aws --version
+
+2. Configure AWS credentials
+   aws configure
+
+✅ PHASE 2: Prepare Terraform Infrastructure
+------------------------------------------
+3. Create Terraform files (main.tf, variables.tf, outputs.tf)
+   # main.tf includes EC2, SG, and Docker setup
+
+4. Initialize Terraform
+   terraform init
+
+5. Apply Terraform (provide your key pair name)
+   terraform apply -var="key_name=invento"
+
+✅ PHASE 3: Dockerize Your App Locally
+------------------------------------------
+6. Create a Dockerfile (example: Flask app)
+7. Build the Docker image
+   docker build -t inventoware-app .
+
+8. Test locally (optional)
+   docker run -p 5000:5000 inventoware-app
+
+✅ PHASE 4: Push Docker Image to DockerHub
+------------------------------------------
+9. Login to DockerHub
+   docker login
+
+10. Tag and Push Image
+    docker tag inventoware-app your_dockerhub_username/inventoware-app
+    docker push your_dockerhub_username/inventoware-app
+
+✅ PHASE 5: Connect to EC2 and Run Your App
+------------------------------------------
+11. SSH into EC2
+    ssh -i "C:/Users/Anuj/.ssh/invento.pem" ec2-user@<your-ec2-public-dns>
+
+12. Pull and Run the Docker Image on EC2
+    docker pull your_dockerhub_username/inventoware-app
+    docker run -d -p 5000:5000 --name inventoware your_dockerhub_username/inventoware-app
+
+✅ App is now live at:
+   http://<your-ec2-ip>:5000

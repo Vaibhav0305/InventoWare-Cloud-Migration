@@ -17,23 +17,19 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-north-1 # Adjust to your region (e.g., us-east-1)
+          aws-region: ap-south-1 # or your region
 
       - name: 🚀 Start Jenkins EC2 Instance
         run: |
-          aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }} || { echo "Failed to start instance"; exit 1; }
-          aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }} || { echo "Instance failed to reach running state"; exit 1; }
+          aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
 
       - name: 🕒 Wait for Jenkins to boot
         run: |
           echo "Waiting for Jenkins to become available..."
-          until curl -s -f -o /dev/null "${{ secrets.JENKINS_URL }}/login"; do
-            sleep 10
-            echo "Retrying..."
-          done
-          echo "Jenkins is up!"
+          sleep 120 # Or use a smarter loop with curl and retries
 
       - name: 🧩 Trigger Jenkins Job
         run: |
           curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
-            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" || { echo "Failed to trigger Jenkins job"; exit 1; }
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"

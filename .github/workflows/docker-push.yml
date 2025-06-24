@@ -1,24 +1,35 @@
-name: 🚀 Docker Build and Push
+name: 🚀 Start Jenkins & Trigger CI/CD
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build-and-push:
+  trigger-jenkins:
     runs-on: ubuntu-latest
 
     steps:
       - name: ⬇️ Checkout code
         uses: actions/checkout@v3
 
-      - name: 🔐 Log in to DockerHub
-        uses: docker/login-action@v2
+      - name: ☁️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1 # or your region
 
-      - name: 🐳 Build and push Docker image from /invento-app
+      - name: 🚀 Start Jenkins EC2 Instance
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app:latest ./invento-app
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app:latest
+          aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+
+      - name: 🕒 Wait for Jenkins to boot
+        run: |
+          echo "Waiting for Jenkins to become available..."
+          sleep 120 # Or use a smarter loop with curl and retries
+
+      - name: 🧩 Trigger Jenkins Job
+        run: |
+          curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"

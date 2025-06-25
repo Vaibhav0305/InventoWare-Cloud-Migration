@@ -29,6 +29,10 @@ jobs:
           echo "Waiting for Jenkins to become available..."
           sleep 120 # Or use a smarter loop with curl and retries
 
+      - name: 🐛 Debug AWS identity
+        run: aws sts get-caller-identity
+
+
       - name: 🧩 Trigger Jenkins Job
         run: |
           curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \

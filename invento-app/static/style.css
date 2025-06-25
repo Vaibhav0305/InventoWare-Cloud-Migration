@@ -170,7 +170,6 @@ td form {
     color: #000;
 }
 
-/* Responsive */
 @media screen and (max-width: 500px) {
     .form-container {
         padding: 20px;

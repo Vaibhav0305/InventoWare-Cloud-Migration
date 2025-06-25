@@ -28,19 +28,38 @@ jobs:
       - name: ⏳ Wait for Jenkins to Boot
         run: sleep 60
 
-      - name: 🧩 Trigger Jenkins Job
+      - name: 🧩 Trigger Jenkins Job and Capture Build Number
+        id: trigger
         run: |
           echo "Triggering job..."
-          curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
-            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"
+          QUEUE_URL=$(curl -s -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters" \
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" -i | grep -i Location | awk '{print $2}' | tr -d '\r\n')
+          
+          echo "Queued at: $QUEUE_URL"
 
-      - name: 🛰️ Poll Jenkins Job Status
+          for i in {1..20}; do
+            BUILD_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "${QUEUE_URL}api/json")
+            EXECUTABLE_URL=$(echo "$BUILD_JSON" | jq -r '.executable.url // empty')
+            if [[ -n "$EXECUTABLE_URL" ]]; then
+              echo "Found executable: $EXECUTABLE_URL"
+              BUILD_NUMBER=$(echo "$BUILD_JSON" | jq -r '.executable.number')
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Waiting for build number..."
+            sleep 5
+          done
+
+          echo "Failed to get build number."
+          exit 1
+
+      - name: 🛰️ Poll Jenkins Build Result
         id: poll
         run: |
-          echo "Polling Jenkins for status..."
-          for i in {1..20}; do
+          echo "Polling Jenkins build #${{ steps.trigger.outputs.build_number }} for result..."
+          for i in {1..30}; do
             JSON=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
-              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json")
+              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}/api/json")
             BUILDING=$(echo "$JSON" | jq -r .building)
             STATUS=$(echo "$JSON" | jq -r .result)
             echo "BUILDING=$BUILDING | STATUS=$STATUS"
@@ -48,7 +67,7 @@ jobs:
               echo "result=$STATUS" >> $GITHUB_OUTPUT
               exit 0
             fi
-            sleep 15
+            sleep 10
           done
           echo "result=TIMEOUT" >> $GITHUB_OUTPUT
           exit 1
@@ -95,7 +114,7 @@ jobs:
       - name: 🛑 Stop Jenkins EC2 Instance
         if: always()
         run: |
-          echo "Shutting down EC2 in 3 minute..."
+          echo "Shutting down EC2 in 3 minutes..."
           sleep 180
           aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           aws ec2 wait instance-stopped --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
@@ -116,5 +135,5 @@ jobs:
           body: |
             ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
-            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
+            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}
             ➤ EC2 has been safely stopped after the job.

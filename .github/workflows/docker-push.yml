@@ -1,18 +1,18 @@
-name: 🚀 Start Jenkins & Trigger CI/CD
+name: 🚀 Jenkins CI/CD with Docker & Auto-Rollback
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  trigger-jenkins:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v3
 
-      - name: ☁️ Configure AWS credentials
+      - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -21,110 +21,96 @@ jobs:
 
       - name: 🚀 Start Jenkins EC2 Instance
         run: |
-          echo "Starting Jenkins EC2 instance..."
+          echo "Starting EC2..."
           aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
 
-      - name: 🕒 Wait for Jenkins to boot
-        run: |
-          echo "Waiting for Jenkins to become available..."
-          sleep 120
+      - name: ⏳ Wait for Jenkins to Boot
+        run: sleep 120
 
       - name: 🧩 Trigger Jenkins Job
         run: |
-          echo "Triggering Jenkins job..."
+          echo "Triggering job..."
           curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
             --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"
 
       - name: 🛰️ Poll Jenkins Job Status
         id: poll
         run: |
-          echo "Polling Jenkins for job status..."
+          echo "Polling Jenkins for status..."
           for i in {1..20}; do
-            STATUS=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
-              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json" | jq -r .result)
-            echo "Current status: $STATUS"
-
-            if [[ "$STATUS" != "null" ]]; then
+            JSON=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json")
+            BUILDING=$(echo "$JSON" | jq -r .building)
+            STATUS=$(echo "$JSON" | jq -r .result)
+            echo "BUILDING=$BUILDING | STATUS=$STATUS"
+            if [[ "$BUILDING" == "false" && "$STATUS" != "null" ]]; then
               echo "result=$STATUS" >> $GITHUB_OUTPUT
               exit 0
             fi
-
             sleep 15
           done
-
-          echo "Jenkins job timed out or never finished."
           echo "result=TIMEOUT" >> $GITHUB_OUTPUT
           exit 1
 
-      - name: 🔐 Log in to DockerHub
+      - name: 🔐 DockerHub Login
         if: steps.poll.outputs.result == 'SUCCESS'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🐳 Build and push Docker image (after Jenkins SUCCESS)
+      - name: 🐳 Build & Push Docker Image
         if: steps.poll.outputs.result == 'SUCCESS'
         run: |
           IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app
-          GIT_SHA=$(git rev-parse --short HEAD)
-          TAG=${GIT_SHA:-latest}
-
-          echo "Building image with tag $TAG..."
+          TAG=$(git rev-parse --short HEAD)
           docker build -t $IMAGE:$TAG ./invento-app
-
-          echo "Tagging image as latest and previous..."
           docker tag $IMAGE:$TAG $IMAGE:latest
           docker tag $IMAGE:$TAG $IMAGE:previous
-
-          echo "Pushing all tags to Docker Hub..."
           docker push $IMAGE:$TAG
           docker push $IMAGE:latest
           docker push $IMAGE:previous
 
-          echo "✅ Docker image pushed successfully."
-
-      - name: 🔁 Rollback Docker image (on Jenkins failure)
+      - name: 🔁 Rollback on Failure
         if: steps.poll.outputs.result != 'SUCCESS'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🧯 Perform rollback
+      - name: 🧯 Perform Rollback
         if: steps.poll.outputs.result != 'SUCCESS'
         run: |
           IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app
-          echo "Attempting rollback to previous tag..."
+          echo "Attempting rollback..."
           if docker pull $IMAGE:previous; then
             docker tag $IMAGE:previous $IMAGE:latest
             docker push $IMAGE:latest
-            echo "✅ Rollback completed."
+            echo "Rollback successful."
           else
-            echo "⚠️ No previous image found. Rollback skipped."
+            echo "No previous image to roll back to."
           fi
 
-      - name: 📧 Send Email Notification
+      - name: 📧 Email Notification
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
+          subject: |
+            ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
           to: anuj.107126@stu.upes.ac.in
           from: GitHub Actions <${{ secrets.EMAIL_USERNAME }}>
           body: |
-            ${{ steps.poll.outputs.result == 'SUCCESS' && '🎉 The Jenkins job completed successfully.' || '❌ The Jenkins job failed or timed out.' }}
-
-            ➤ Job: ${{ secrets.JENKINS_JOB_NAME }}
+            ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
-            ➤ Jenkins URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
+            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
 
-      - name: 🛑 Stop EC2 after all steps
-        if: steps.poll.outputs.result == 'SUCCESS'
+      - name: 🛑 Stop Jenkins EC2 Instance
+        if: always()
         run: |
-          sleep 360
-          echo "🔻 Shutting down Jenkins EC2 instance..."
+          echo "Shutting down EC2 in 1 minute..."
+          sleep 180
           aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}

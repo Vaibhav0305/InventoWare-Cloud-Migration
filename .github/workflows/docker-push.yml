@@ -1,4 +1,4 @@
-name: 🚀 Trigger Jenkins & Shutdown EC2 on Success
+name: 🚀 Start Jenkins & Trigger CI/CD
 
 on:
   push:
@@ -7,9 +7,6 @@ on:
 jobs:
   trigger-jenkins:
     runs-on: ubuntu-latest
-
-    env:
-      REGION: eu-north-1
 
     steps:
       - name: ⬇️ Checkout code
@@ -20,52 +17,48 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.REGION }}
+          aws-region: eu-north-1
 
       - name: 🚀 Start Jenkins EC2 Instance
         run: |
+          echo "Starting Jenkins EC2 instance..."
           aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
 
       - name: 🕒 Wait for Jenkins to boot
         run: |
           echo "Waiting for Jenkins to become available..."
-          sleep 90
+          sleep 120
 
       - name: 🧩 Trigger Jenkins Job
         run: |
+          echo "Triggering Jenkins job..."
           curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
             --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"
 
-      - name: 🔁 Poll Jenkins Build Status
+      - name: 🛰️ Poll Jenkins Job Status
         id: poll
         run: |
-          echo "Polling Jenkins job status..."
-          JENKINS_JOB_API="${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json"
-          
-          for i in {1..30}; do
-            STATUS=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "$JENKINS_JOB_API" | jq -r .result)
-            
-            if [ "$STATUS" != "null" ]; then
+          echo "Polling Jenkins for job status..."
+          for i in {1..20}; do
+            STATUS=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json" | jq -r .result)
+            echo "Current status: $STATUS"
+
+            if [[ "$STATUS" != "null" ]]; then
               echo "result=$STATUS" >> $GITHUB_OUTPUT
               exit 0
             fi
-            
-            echo "Still building... (${i}/30)"
-            sleep 10
+
+            sleep 15
           done
 
-          echo "Jenkins job did not complete in time"
+          echo "Jenkins job timed out or never finished."
           echo "result=TIMEOUT" >> $GITHUB_OUTPUT
+          exit 1
 
-      - name: 🛑 Stop EC2 if Jenkins Succeeded
-        if: steps.poll.outputs.result == 'SUCCESS'
-        run: |
-          echo "✅ Jenkins succeeded. Stopping EC2 instance..."
-          aws ec2 stop-instances --region ${{ env.REGION }} --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
-
-            - name: 📧 Send Email Notification
-      - uses: dawidd6/action-send-mail@v3
+      - name: 📧 Send Email Notification
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -80,3 +73,9 @@ jobs:
             ➤ Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
             ➤ Jenkins URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
+
+      - name: 🛑 Stop EC2 after Jenkins success
+        if: steps.poll.outputs.result == 'SUCCESS'
+        run: |
+          echo "✅ Jenkins succeeded. Stopping EC2 instance..."
+          aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}

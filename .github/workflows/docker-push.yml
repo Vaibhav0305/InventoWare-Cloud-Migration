@@ -1,4 +1,4 @@
-name: 🚀 Start Jenkins & Trigger CI/CD
+name: 🚀 Trigger Jenkins & Shutdown EC2 on Success
 
 on:
   push:
@@ -7,6 +7,9 @@ on:
 jobs:
   trigger-jenkins:
     runs-on: ubuntu-latest
+
+    env:
+      REGION: eu-north-1
 
     steps:
       - name: ⬇️ Checkout code
@@ -17,7 +20,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-north-1
+          aws-region: ${{ env.REGION }}
 
       - name: 🚀 Start Jenkins EC2 Instance
         run: |
@@ -27,12 +30,53 @@ jobs:
       - name: 🕒 Wait for Jenkins to boot
         run: |
           echo "Waiting for Jenkins to become available..."
-          sleep 120  # Or replace with smarter retry logic
-
-      - name: 🐛 Debug AWS identity (optional)
-        run: aws sts get-caller-identity
+          sleep 90
 
       - name: 🧩 Trigger Jenkins Job
         run: |
           curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
             --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"
+
+      - name: 🔁 Poll Jenkins Build Status
+        id: poll
+        run: |
+          echo "Polling Jenkins job status..."
+          JENKINS_JOB_API="${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/lastBuild/api/json"
+          
+          for i in {1..30}; do
+            STATUS=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "$JENKINS_JOB_API" | jq -r .result)
+            
+            if [ "$STATUS" != "null" ]; then
+              echo "result=$STATUS" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "Still building... (${i}/30)"
+            sleep 10
+          done
+
+          echo "Jenkins job did not complete in time"
+          echo "result=TIMEOUT" >> $GITHUB_OUTPUT
+
+      - name: 🛑 Stop EC2 if Jenkins Succeeded
+        if: steps.poll.outputs.result == 'SUCCESS'
+        run: |
+          echo "✅ Jenkins succeeded. Stopping EC2 instance..."
+          aws ec2 stop-instances --region ${{ env.REGION }} --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+
+            - name: 📧 Send Email Notification
+      - uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
+          to: anujrtk.aj@gmail.com
+          from: GitHub Actions <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            ${{ steps.poll.outputs.result == 'SUCCESS' && '🎉 The Jenkins job completed successfully.' || '❌ The Jenkins job failed or timed out.' }}
+
+            ➤ Job: ${{ secrets.JENKINS_JOB_NAME }}
+            ➤ Status: ${{ steps.poll.outputs.result }}
+            ➤ Jenkins URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}

@@ -122,8 +122,8 @@ jobs:
             ➤ Status: ${{ steps.poll.outputs.result }}
             ➤ Jenkins URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
 
-      - name: 🛑 Stop EC2 after Jenkins success
-        if: steps.poll.outputs.result == 'SUCCESS'
+      - name: 🛑 Stop EC2 after all steps
+        if: always()
         run: |
-          echo "✅ Jenkins succeeded. Stopping EC2 instance..."
+          echo "🔻 Shutting down Jenkins EC2 instance..."
           aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}

@@ -57,6 +57,53 @@ jobs:
           echo "result=TIMEOUT" >> $GITHUB_OUTPUT
           exit 1
 
+      - name: 📦 Build and Push Docker Image
+        if: steps.poll.outputs.result == 'SUCCESS'
+        run: |
+          echo "Logging in to Docker Hub..."
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+          IMAGE_NAME=${{ secrets.DOCKERHUB_USERNAME }}/my-app
+          GIT_SHA=$(git rev-parse --short HEAD)
+          TAG=${GIT_SHA:-latest}
+
+          echo "Building Docker image..."
+          docker build -t $IMAGE_NAME:$TAG .
+
+          echo "Tagging image as 'latest' and 'previous'..."
+          docker tag $IMAGE_NAME:$TAG $IMAGE_NAME:latest
+          docker tag $IMAGE_NAME:$TAG $IMAGE_NAME:previous
+
+          echo "Pushing images to Docker Hub..."
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:previous
+
+          echo "✅ Docker image pushed successfully."
+
+      - name: 🔁 Rollback Docker image
+        if: steps.poll.outputs.result != 'SUCCESS'
+        run: |
+          echo "Attempting to rollback to previous Docker image..."
+
+          IMAGE_NAME=${{ secrets.DOCKERHUB_USERNAME }}/my-app
+          FALLBACK_TAG=previous
+
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+          echo "Pulling previous image: $IMAGE_NAME:$FALLBACK_TAG"
+          if docker pull $IMAGE_NAME:$FALLBACK_TAG; then
+            echo "Tagging as latest..."
+            docker tag $IMAGE_NAME:$FALLBACK_TAG $IMAGE_NAME:latest
+
+            echo "Pushing rollback image..."
+            docker push $IMAGE_NAME:latest
+
+            echo "✅ Rollback completed. $IMAGE_NAME:latest now points to previous stable image."
+          else
+            echo "⚠️ No previous image found for rollback. Skipping."
+          fi
+
       - name: 📧 Send Email Notification
         uses: dawidd6/action-send-mail@v3
         with:

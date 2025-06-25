@@ -26,7 +26,7 @@ jobs:
           aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
 
       - name: ⏳ Wait for Jenkins to Boot
-        run: sleep 120
+        run: sleep 60
 
       - name: 🧩 Trigger Jenkins Job
         run: |
@@ -92,7 +92,17 @@ jobs:
             echo "No previous image to roll back to."
           fi
 
+      - name: 🛑 Stop Jenkins EC2 Instance
+        if: always()
+        run: |
+          echo "Shutting down EC2 in 1 minute..."
+          sleep 60
+          aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          aws ec2 wait instance-stopped --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          echo "EC2 stopped ✅"
+
       - name: 📧 Email Notification
+        if: always()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -107,10 +117,4 @@ jobs:
             ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
             ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
-
-      - name: 🛑 Stop Jenkins EC2 Instance
-        if: always()
-        run: |
-          echo "Shutting down EC2 in 1 minute..."
-          sleep 180
-          aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+            ➤ EC2 has been safely stopped after the job.

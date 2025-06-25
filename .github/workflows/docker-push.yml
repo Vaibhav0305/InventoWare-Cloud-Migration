@@ -123,7 +123,8 @@ jobs:
             ➤ Jenkins URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}
 
       - name: 🛑 Stop EC2 after all steps
-        if: always()
+        if: steps.poll.outputs.result == 'SUCCESS'
         run: |
+          sleep 360
           echo "🔻 Shutting down Jenkins EC2 instance..."
           aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}

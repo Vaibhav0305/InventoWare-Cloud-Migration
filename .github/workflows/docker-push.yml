@@ -27,11 +27,10 @@ jobs:
       - name: 🕒 Wait for Jenkins to boot
         run: |
           echo "Waiting for Jenkins to become available..."
-          sleep 120 # Or use a smarter loop with curl and retries
+          sleep 120  # Or replace with smarter retry logic
 
-      - name: 🐛 Debug AWS identity
+      - name: 🐛 Debug AWS identity (optional)
         run: aws sts get-caller-identity
-
 
       - name: 🧩 Trigger Jenkins Job
         run: |

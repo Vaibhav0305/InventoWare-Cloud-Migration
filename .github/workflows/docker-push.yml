@@ -116,7 +116,7 @@ jobs:
         if: always()
         run: |
           echo "Shutting down EC2 in 3 minutes..."
-          sleep 180
+          sleep 600
           aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           aws ec2 wait instance-stopped --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           echo "EC2 stopped ✅"

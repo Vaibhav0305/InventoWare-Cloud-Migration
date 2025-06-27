@@ -147,7 +147,6 @@ body {
   border-radius: 8px;
 }
 
-/* Responsive */
 @media screen and (max-width: 500px) {
   .login-container {
     padding: 30px 20px;

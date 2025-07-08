@@ -498,6 +498,10 @@ def add_request():
     finally:
         conn.close()
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify(status="ok"), 200
+
 
 @app.route("/requests/<int:request_id>/<action>", methods=["POST"])
 @require_login

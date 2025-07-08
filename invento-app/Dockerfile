@@ -1,9 +1,12 @@
 FROM python:3.10-slim
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Copy all project files (including app.py, templates/, static/)
+# Install system dependencies
+RUN apt-get update && apt-get install -y gcc libsqlite3-dev build-essential python3-dev && rm -rf /var/lib/apt/lists/*
+
+# Copy all app files
 COPY . /app
 
 # Install Python dependencies

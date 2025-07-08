@@ -653,3 +653,4 @@ if __name__ == "__main__":
             print(
                 f"Failed to start application: {str(e)}. Check app.log for details. If 'inventory.db' is locked, close processes accessing it ({process_info}). On Windows, use Resource Monitor or 'netstat -aon' to check. If port {port} is in use, close the conflicting process or use a different port."
             )
+            

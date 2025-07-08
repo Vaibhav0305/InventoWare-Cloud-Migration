@@ -1,35 +1,140 @@
-name: 🚀 Start Jenkins & Trigger CI/CD
+name: 🚀 Jenkins CI/CD with Docker & Auto-Rollback
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  trigger-jenkins:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v3
 
-      - name: ☁️ Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: ☁️ Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-north-1 # or your region
+          aws-region: eu-north-1
 
       - name: 🚀 Start Jenkins EC2 Instance
         run: |
+          echo "Starting EC2..."
           aws ec2 start-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
           aws ec2 wait instance-running --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
 
-      - name: 🕒 Wait for Jenkins to boot
-        run: |
-          echo "Waiting for Jenkins to become available..."
-          sleep 120 # Or use a smarter loop with curl and retries
+      - name: ⏳ Wait for Jenkins to Boot
+        run: sleep 60
 
-      - name: 🧩 Trigger Jenkins Job
+      - name: 🧩 Trigger Jenkins Job and Capture Build Number
+        id: trigger
         run: |
-          curl -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
-            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}"
+          echo "Triggering job..."
+          QUEUE_URL=$(curl -s -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" -i | grep -i Location | awk '{print $2}' | tr -d '\r\n')
+
+          
+          echo "Queued at: $QUEUE_URL"
+
+          for i in {1..20}; do
+            BUILD_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "${QUEUE_URL}api/json")
+            EXECUTABLE_URL=$(echo "$BUILD_JSON" | jq -r '.executable.url // empty')
+            if [[ -n "$EXECUTABLE_URL" ]]; then
+              echo "Found executable: $EXECUTABLE_URL"
+              BUILD_NUMBER=$(echo "$BUILD_JSON" | jq -r '.executable.number')
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Waiting for build number..."
+            sleep 5
+          done
+
+          echo "Failed to get build number."
+          exit 1
+
+      - name: 🛰️ Poll Jenkins Build Result
+        id: poll
+        run: |
+          echo "Polling Jenkins build #${{ steps.trigger.outputs.build_number }} for result..."
+          for i in {1..30}; do
+            JSON=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+              "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}/api/json")
+            BUILDING=$(echo "$JSON" | jq -r .building)
+            STATUS=$(echo "$JSON" | jq -r .result)
+            echo "BUILDING=$BUILDING | STATUS=$STATUS"
+            if [[ "$BUILDING" == "false" && "$STATUS" != "null" ]]; then
+              echo "result=$STATUS" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "result=TIMEOUT" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: 🔐 DockerHub Login
+        if: steps.poll.outputs.result == 'SUCCESS'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🐳 Build & Push Docker Image
+        if: steps.poll.outputs.result == 'SUCCESS'
+        run: |
+          IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app
+          TAG=$(git rev-parse --short HEAD)
+          docker build -t $IMAGE:$TAG ./invento-app
+          docker tag $IMAGE:$TAG $IMAGE:latest
+          docker tag $IMAGE:$TAG $IMAGE:previous
+          docker push $IMAGE:$TAG
+          docker push $IMAGE:latest
+          docker push $IMAGE:previous
+
+      - name: 🔁 Rollback on Failure
+        if: steps.poll.outputs.result != 'SUCCESS'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🧯 Perform Rollback
+        if: steps.poll.outputs.result != 'SUCCESS'
+        run: |
+          IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/inventoware-app
+          echo "Attempting rollback..."
+          if docker pull $IMAGE:previous; then
+            docker tag $IMAGE:previous $IMAGE:latest
+            docker push $IMAGE:latest
+            echo "Rollback successful."
+          else
+            echo "No previous image to roll back to."
+          fi
+
+      - name: 🛑 Stop Jenkins EC2 Instance
+        if: always()
+        run: |
+          echo "Shutting down EC2 in 3 minutes..."
+          sleep 180
+          aws ec2 stop-instances --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          aws ec2 wait instance-stopped --instance-ids ${{ secrets.JENKINS_INSTANCE_ID }}
+          echo "EC2 stopped ✅"
+
+      - name: 📧 Email Notification
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: |
+            ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
+          to: anuj.107126@stu.upes.ac.in
+          from: GitHub Actions <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
+            ➤ Status: ${{ steps.poll.outputs.result }}
+            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}
+            ➤ EC2 has been safely stopped after the job.

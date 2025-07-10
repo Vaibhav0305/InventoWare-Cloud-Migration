@@ -29,55 +29,54 @@ jobs:
         run: sleep 60
 
       - name: 🧩 Trigger Jenkins Job and Capture Build Number
-  id: trigger
-  run: |
-    echo "🔐 Getting Jenkins crumb for CSRF protection..."
-    CRUMB_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
-      "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json")
+        id: trigger
+        run: |
+          echo "🔐 Getting Jenkins crumb for CSRF protection..."
+          CRUMB_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json")
 
-    CRUMB=$(echo "$CRUMB_JSON" | jq -r .crumb)
-    if [[ -z "$CRUMB" || "$CRUMB" == "null" ]]; then
-      echo "❌ Failed to get Jenkins crumb. Full response:"
-      echo "$CRUMB_JSON"
-      exit 1
-    fi
-    echo "✅ Crumb received: $CRUMB"
+          CRUMB=$(echo "$CRUMB_JSON" | jq -r .crumb)
+          if [[ -z "$CRUMB" || "$CRUMB" == "null" ]]; then
+            echo "❌ Failed to get Jenkins crumb. Full response:"
+            echo "$CRUMB_JSON"
+            exit 1
+          fi
 
-    echo "🚀 Triggering Jenkins job: ${{ secrets.JENKINS_JOB_NAME }}"
+          echo "✅ Crumb received: $CRUMB"
+          echo "🚀 Triggering Jenkins job: ${{ secrets.JENKINS_JOB_NAME }}"
 
-    RESPONSE=$(curl -s -i -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
-      --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
-      -H "Jenkins-Crumb: $CRUMB")
+          RESPONSE=$(curl -s -i -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
+            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+            -H "Jenkins-Crumb: $CRUMB")
 
-    echo "📨 Raw Jenkins response:"
-    echo "$RESPONSE"
+          echo "📨 Raw Jenkins response:"
+          echo "$RESPONSE"
 
-    QUEUE_URL=$(echo "$RESPONSE" | grep -i "^Location:" | awk '{print $2}' | tr -d '\r\n')
-    echo "📌 Queued at: $QUEUE_URL"
+          QUEUE_URL=$(echo "$RESPONSE" | grep -i "^Location:" | awk '{print $2}' | tr -d '\r\n')
+          echo "📌 Queued at: $QUEUE_URL"
 
-    if [ -z "$QUEUE_URL" ]; then
-      echo "❌ Could not get Jenkins queue URL. Check if job exists, is accessible, or needs parameters."
-      exit 1
-    fi
+          if [ -z "$QUEUE_URL" ]; then
+            echo "❌ Could not get Jenkins queue URL. Check if job exists, is accessible, or needs parameters."
+            exit 1
+          fi
 
-    echo "⏳ Waiting for Jenkins to assign a build number..."
+          echo "⏳ Waiting for Jenkins to assign a build number..."
 
-    for i in {1..20}; do
-      BUILD_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "${QUEUE_URL}api/json")
-      EXECUTABLE_URL=$(echo "$BUILD_JSON" | jq -r '.executable.url // empty')
-      if [[ -n "$EXECUTABLE_URL" ]]; then
-        echo "✅ Build started at: $EXECUTABLE_URL"
-        BUILD_NUMBER=$(echo "$BUILD_JSON" | jq -r '.executable.number')
-        echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
-        exit 0
-      fi
-      echo "⏳ Waiting for build number..."
-      sleep 5
-    done
+          for i in {1..20}; do
+            BUILD_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "${QUEUE_URL}api/json")
+            EXECUTABLE_URL=$(echo "$BUILD_JSON" | jq -r '.executable.url // empty')
+            if [[ -n "$EXECUTABLE_URL" ]]; then
+              echo "✅ Build started at: $EXECUTABLE_URL"
+              BUILD_NUMBER=$(echo "$BUILD_JSON" | jq -r '.executable.number')
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "⏳ Waiting for build number..."
+            sleep 5
+          done
 
-    echo "❌ Failed to retrieve Jenkins build number after 20 attempts."
-    exit 1
-
+          echo "❌ Failed to retrieve Jenkins build number after 20 attempts."
+          exit 1
 
       - name: 🛰️ Poll Jenkins Build Result
         id: poll

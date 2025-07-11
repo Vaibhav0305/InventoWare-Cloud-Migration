@@ -1,18 +1,19 @@
 # 🚀 InventoWare Inventory Management System
 
-This project is a Flask-based **Inventory Management System** with separate roles for admins and workers, deployed using a single database and modular Python files. It includes automated deployment capabilities with **Terraform**, **Docker**, and **GitHub Actions**.
+InventoWare is a Flask-based **Inventory Management System** supporting admin and worker roles, powered by **modular Python**, **Dockerized deployments**, and **cloud-native DevOps tooling**.
+
+This project features a fully automated, **blue-green CI/CD pipeline** using **GitHub Actions**, **Jenkins**, **Terraform**, and AWS — integrated with a complete monitoring stack, security scanning, and dynamic DNS routing.
 
 ---
 
 ## 📦 Prerequisites
 
-- ✅ AWS account with an EC2 key pair created
-- ✅ AWS CLI installed and configured (`aws configure`)
-- ✅ Terraform installed ([Download Terraform](https://terraform.io))
-- ✅ Docker installed ([Download Docker](https://docker.com))
-- ✅ DockerHub account
-- ✅ Python 3.12+ installed
-- ✅ Pip installed for Python dependencies
+* ✅ AWS account with EC2 key pair and IAM credentials
+* ✅ AWS CLI configured (`aws configure`)
+* ✅ Terraform installed ([Download](https://www.terraform.io/downloads.html))
+* ✅ Docker installed and running ([Download](https://www.docker.com/get-started))
+* ✅ GitHub & DockerHub accounts
+* ✅ Python 3.12+ and `pip` installed
 
 ---
 
@@ -21,114 +22,145 @@ This project is a Flask-based **Inventory Management System** with separate role
 ```
 INVENTOWARE-CLOUD-MIGRATION/
 │
-├── .github/                          # GitHub Actions for CI/CD
+├── .github/                          # GitHub Actions for CI pipeline
 │   └── workflows/
-│       └── docker-push.yml           # Builds & pushes Docker image on push
+│       └── ci.yml                    # Starts Jenkins CD job + rollback logic
 │
-├── invento-app/                      # Flask application directory
-│   ├── static/                       # CSS and static assets
-│   │   ├── login.css
-│   │   └── style.css
-│   ├── templates/                    # Jinja2 HTML templates
-│   │   ├── error.html
-│   │   ├── flask_wtf.html
-│   │   ├── index.html
-│   │   └── login.html
-│   ├── app.py                        # Main Flask app
-│   ├── inventory.db                  # SQLite database (ignored in .gitignore)
-|   ├── app.log                            # Optional log file or directory
-│   └── requirements.txt              # Python dependencies
+├── app/invento-app/                 # Flask inventory app
+│   ├── static/                      # CSS assets
+│   ├── templates/                   # HTML templates (Jinja2)
+│   ├── app.py                       # Main Flask app
+│   └── requirements.txt             # Python dependencies
 │
-├── terraform/                        # Terraform for provisioning AWS EC2
-│   ├── main.tf
+├── infra/terraform/                 # AWS infrastructure provisioning
+│   ├── main.tf                      # EC2, VPC, ALB, TGs
 │   ├── variables.tf
-│   ├── outputs.tf
+│   └── outputs.tf
 │
-├── Dockerfile                        # Docker config for app containerization
-├── .gitattributes                    # Git config for file encoding/line-endings
-├── .gitignore                        # Files to exclude from Git (env, db, cache)
-└── README.md                         # Main project documentation
-
+├── Dockerfile                       # Dockerfile for app container
+├── Jenkinsfile                      # Jenkins CD pipeline with blue-green deploy
+├── README.md                        # You are here ✅
+└── .gitignore
 ```
 
 ---
 
-## 🚀 Auto Build & Push with GitHub Actions
+## 🔀 End-to-End Pipeline (CI + CD)
 
-This project is integrated with GitHub Actions to automatically:
+### 💡 Overview
 
-- Build the Docker image on every push to `main`
-- Push it to DockerHub as `your-dockerhub-username/inventoware-app`
-
-### 🛠 How to Enable It
-
-1. Go to your GitHub repo → **Settings → Secrets and variables → Actions**
-2. Add the following **repository secrets**:
-
-| Name                | Value                               |
-|---------------------|-------------------------------------|
-| `DOCKERHUB_USERNAME`| Your DockerHub username             |
-| `DOCKERHUB_TOKEN`   | DockerHub Access Token ([link](https://hub.docker.com/settings/security)) |
+| Stage          | Tool                      | Description                                                              |
+| -------------- | ------------------------- | ------------------------------------------------------------------------ |
+| **CI**         | GitHub Actions            | Lint, Trivy scan, SonarCloud scan, triggers Jenkins CD                   |
+| **CD**         | Jenkins on EC2            | Terraform provisioning, app deployment, health check, blue-green routing |
+| **Monitoring** | Prometheus, Grafana, Loki | Tracks app logs, metrics, and system health                              |
+| **Security**   | Trivy, SonarCloud         | Scans Docker image & code for vulnerabilities                            |
+| **Rollback**   | DockerHub `:previous` tag | Fallback if deployment fails or smoke test fails                         |
 
 ---
 
-## 🛠️ Manual Deployment Steps (Optional)
+## 🔷 Blue-Green Deployment
 
-### 🔐 Step 1: Configure AWS Credentials
+* Each deployment targets **blue** or **green** EC2 group
+* ALB listener switches to new target group post-deploy
+* Ensures **zero downtime** & rollback safety
+
+> Deployment color is passed via a Jenkins `DEPLOYMENT_COLOR` parameter (auto-configurable)
+
+---
+
+## 🔐 Secure Infrastructure
+
+* 🕪️ Bastion Host with **SSH tunneling** to access private EC2s
+* 🔑 Credentials stored via **Jenkins Credentials Manager** and **GitHub Secrets**
+* 📦 Docker image scanning via **Trivy**
+* 🧲 Code quality enforced via **SonarCloud**
+
+---
+
+## 📊 Monitoring Stack
+
+The system includes a full monitoring suite:
+
+| Tool              | Purpose                    |
+| ----------------- | -------------------------- |
+| **Grafana**       | Visualization & dashboards |
+| **Prometheus**    | Metrics collection         |
+| **Loki**          | Log aggregation            |
+| **cAdvisor**      | Container stats            |
+| **Node Exporter** | System-level metrics       |
+
+Dashboards display CPU, memory, request latency, status codes, and more.
+
+---
+
+## 🧪 Health, Smoke & Load Testing
+
+* `/health` endpoint tested after deploy
+* Smoke test via `curl`
+* Load test via `k6` (Grafana)
+
+---
+
+## 🚀 CI Pipeline with GitHub Actions
+
+### 🛠 Setup Repository Secrets
+
+| Secret Name               | Purpose                                  |
+| ------------------------- | ---------------------------------------- |
+| `DOCKERHUB_USERNAME`      | DockerHub username                       |
+| `DOCKERHUB_TOKEN`         | DockerHub token                          |
+| `JENKINS_USER`            | Jenkins basic auth username              |
+| `JENKINS_API_TOKEN`       | Jenkins API token                        |
+| `JENKINS_URL`             | Jenkins base URL (e.g. `http://ip:8080`) |
+| `JENKINS_INSTANCE_ID`     | EC2 instance ID for Jenkins server       |
+| `JENKINS_JOB_NAME`        | Name of the Jenkins job                  |
+| `AWS_ACCESS_KEY_ID`       | AWS IAM credentials                      |
+| `AWS_SECRET_ACCESS_KEY`   | AWS IAM credentials                      |
+| `EMAIL_USERNAME/PASSWORD` | For SMTP notifications                   |
+
+---
+
+## 🛠️ Manual Deployment (Optional)
+
+1. **Provision Infra**:
+
+   ```bash
+   cd infra/terraform/
+   terraform init
+   terraform apply -var="key_name=<your-key-name>"
+   ```
+
+2. **SSH & Deploy**:
+
+   ```bash
+   ssh -i "<key.pem>" ec2-user@<public-ip>
+   docker run -d -p 5000:5000 your-dockerhub-username/inventoware-app
+   ```
+
+---
+
+## 💻 Local Setup
+
 ```bash
-aws configure
-```
+# Clone repo and install dependencies
+cd app/invento-app/
+pip install -r requirements.txt
 
-### ☁️ Step 2: Provision EC2 Instance Using Terraform
-
-```bash
-cd terraform/
-terraform init
-terraform apply -var="key_name=<your-ec2-keypair-name>"
-```
-
-### 🔗 Step 3: SSH into Your EC2 Instance
-
-```bash
-ssh -i "<path-to-your-key.pem>" ec2-user@<your-ec2-public-ip>
-```
-
-### 🚀 Step 4: Pull and Run Docker Image on EC2
-
-```bash
-docker pull your-dockerhub-username/inventoware-app
-docker run -d -p 5000:5000 --name inventoware your-dockerhub-username/inventoware-app
+# Run locally
+python app.py
+# Visit http://127.0.0.1:5000/
 ```
 
 ---
 
-## 🛠️ Local Setup
+## 📩 Notifications
 
-1. **Generate Project Structure**:
-   ```
-   python create_project_structure.py
-   ```
-2. **Install Dependencies**:
-   ```
-   pip install -r requirements.txt
-   ```
-3. **Run the Application**:
-   ```
-   python run.py
-   ```
-   - The first run will create the SQLite database (`inventory.db`).
-   - Access the app at `http://127.0.0.1:5000/admin/` or `http://127.0.0.1:5000/worker/` after implementing login logic.
-
----
-
-## 📖 Guides Included
-
-- 📘 `create_project_structure.py` – Script to set up the initial project structure.
-
+* Slack alerts: deployment summary, status, instance IPs, ALB URL
+* Email reports: attached SonarCloud and Trivy scan reports
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License.
-
+This project is licensed under the **MIT License**.

@@ -43,6 +43,3 @@
 12. Pull and Run the Docker Image on EC2
     docker pull your_dockerhub_username/inventoware-app
     docker run -d -p 5000:5000 --name inventoware your_dockerhub_username/inventoware-app
-
-✅ App is now live at:
-   http://<your-ec2-ip>:5000

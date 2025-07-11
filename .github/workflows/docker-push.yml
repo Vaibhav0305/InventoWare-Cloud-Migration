@@ -161,5 +161,6 @@ jobs:
           body: |
             ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
-            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}
+            ➤ BuildNumber:${{ steps.trigger.outputs.build_number }}
+            ➤ Public URL : invento-app-alb-882541320.eu-north-1.elb.amazonaws.com 
             ➤ EC2 has been safely stopped after the job.

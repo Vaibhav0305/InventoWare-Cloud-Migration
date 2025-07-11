@@ -156,7 +156,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASSWORD }}
           subject: |
             ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
-          to: anuj.107126@stu.upes.ac.in
+          to: anuj.107126@stu.upes.ac.in,teknobot24@gmail.com,srvaibhav0@gmail.com,bhagwanani23@gmail.com,arjuncodeops@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USERNAME }}>
           body: |
             ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}

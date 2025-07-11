@@ -131,11 +131,6 @@ Visit your app at: `http://<your-ec2-public-ip>:5000`
 
 - 📘 `create_project_structure.py` – Script to set up the initial project structure.
 
----
-
-## 🤝 Contributing
-
-Feel free to fork and contribute via pull requests. Suggestions for features like login authentication or request approval workflows are welcome!
 
 ---
 

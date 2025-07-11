@@ -102,12 +102,6 @@ docker run -d -p 5000:5000 --name inventoware your-dockerhub-username/inventowar
 
 ---
 
-### ✅ Done!
-
-Visit your app at: `http://<your-ec2-public-ip>:5000`
-
----
-
 ## 🛠️ Local Setup
 
 1. **Generate Project Structure**:

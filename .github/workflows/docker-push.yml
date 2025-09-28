@@ -31,27 +31,52 @@ jobs:
       - name: 🧩 Trigger Jenkins Job and Capture Build Number
         id: trigger
         run: |
-          echo "Triggering job..."
-          QUEUE_URL=$(curl -s -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/build" \
-            --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" -i | grep -i Location | awk '{print $2}' | tr -d '\r\n')
+          echo "🔐 Getting Jenkins crumb for CSRF protection..."
+          CRUMB_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/crumbIssuer/api/json")
 
-          
-          echo "Queued at: $QUEUE_URL"
+          CRUMB=$(echo "$CRUMB_JSON" | jq -r .crumb)
+          if [[ -z "$CRUMB" || "$CRUMB" == "null" ]]; then
+            echo "❌ Failed to get Jenkins crumb. Full response:"
+            echo "$CRUMB_JSON"
+            exit 1
+          fi
+
+          echo "✅ Crumb received: $CRUMB"
+          echo "🚀 Triggering Jenkins job: ${{ secrets.JENKINS_JOB_NAME }}"
+
+          RESPONSE=$(curl -s -i -X POST "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters?DUMMY=true" \
+          --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" \
+          -H "Jenkins-Crumb: $CRUMB")
+
+
+          echo "📨 Raw Jenkins response:"
+          echo "$RESPONSE"
+
+          QUEUE_URL=$(echo "$RESPONSE" | grep -i "^Location:" | awk '{print $2}' | tr -d '\r\n')
+          echo "📌 Queued at: $QUEUE_URL"
+
+          if [ -z "$QUEUE_URL" ]; then
+            echo "❌ Could not get Jenkins queue URL. Check if job exists, is accessible, or needs parameters."
+            exit 1
+          fi
+
+          echo "⏳ Waiting for Jenkins to assign a build number..."
 
           for i in {1..20}; do
             BUILD_JSON=$(curl -s --user "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_API_TOKEN }}" "${QUEUE_URL}api/json")
             EXECUTABLE_URL=$(echo "$BUILD_JSON" | jq -r '.executable.url // empty')
             if [[ -n "$EXECUTABLE_URL" ]]; then
-              echo "Found executable: $EXECUTABLE_URL"
+              echo "✅ Build started at: $EXECUTABLE_URL"
               BUILD_NUMBER=$(echo "$BUILD_JSON" | jq -r '.executable.number')
               echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
               exit 0
             fi
-            echo "Waiting for build number..."
+            echo "⏳ Waiting for build number..."
             sleep 5
           done
 
-          echo "Failed to get build number."
+          echo "❌ Failed to retrieve Jenkins build number after 20 attempts."
           exit 1
 
       - name: 🛰️ Poll Jenkins Build Result
@@ -131,10 +156,11 @@ jobs:
           password: ${{ secrets.EMAIL_PASSWORD }}
           subject: |
             ${{ steps.poll.outputs.result == 'SUCCESS' && '✅ Jenkins Job Succeeded' || '🚨 Jenkins Job Failed or Timed Out' }}
-          to: anuj.107126@stu.upes.ac.in
+          to: anuj.107126@stu.upes.ac.in,teknobot24@gmail.com,srvaibhav0@gmail.com,bhagwanani23@gmail.com,arjuncodeops@gmail.com
           from: GitHub Actions <${{ secrets.EMAIL_USERNAME }}>
           body: |
             ➤ Jenkins Job: ${{ secrets.JENKINS_JOB_NAME }}
             ➤ Status: ${{ steps.poll.outputs.result }}
-            ➤ URL: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.trigger.outputs.build_number }}
+            ➤ BuildNumber:${{ steps.trigger.outputs.build_number }}
+            ➤ Public URL : invento-app-alb-882541320.eu-north-1.elb.amazonaws.com 
             ➤ EC2 has been safely stopped after the job.
